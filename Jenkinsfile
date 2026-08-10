@@ -46,10 +46,9 @@ pipeline {
 
         // ── STAGE 2: Build ────────────────────────────────────────────────
         stage('Build') {
-            tools { maven 'Maven-3.9' }
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
-                sh 'mvn clean compile -B -Dmaven.test.skip=true'
+                sh 'chmod +x mvnw && ./mvnw clean compile -B -Dmaven.test.skip=true'
             }
             post {
                 success { echo 'Compile successful — moving to Test stage.' }
@@ -59,9 +58,8 @@ pipeline {
 
         // ── STAGE 3: Test ─────────────────────────────────────────────────
         stage('Test') {
-            tools { maven 'Maven-3.9' }
             steps {
-                sh 'mvn test -B'
+                sh './mvnw test -B'
             }
             post {
                 always {
@@ -89,11 +87,10 @@ pipeline {
 
         // ── STAGE 4: Quality Analysis ─────────────────────────────────────
         stage('Quality Analysis') {
-            tools { maven 'Maven-3.9' }
             steps {
                 withSonarQubeEnv('SonarQube-Local') {
                     sh """
-                        mvn sonar:sonar \
+                        ./mvnw sonar:sonar \
                           -Dsonar.projectKey=${env.APP_NAME} \
                           -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
                           -Dsonar.projectVersion=${env.APP_VERSION} \
@@ -116,9 +113,8 @@ pipeline {
 
         // ── STAGE 6: Package & Archive ────────────────────────────────────
         stage('Package & Archive') {
-            tools { maven 'Maven-3.9' }
             steps {
-                sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
+                sh "./mvnw package -DskipTests -B -Drevision=${env.APP_VERSION}"
                 archiveArtifacts(artifacts: 'target/*.jar', fingerprint: true)
                 echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.jar"
             }
@@ -127,7 +123,6 @@ pipeline {
         // ── STAGE 7: Publish to Nexus (main branch only) ─────────────────
         stage('Publish Artifact') {
             when { branch 'main' }
-            tools { maven 'Maven-3.9' }
             steps {
                 nexusArtifactUploader(
                     nexusVersion:  'nexus3',
@@ -153,36 +148,9 @@ pipeline {
     post {
         success {
             echo "PIPELINE SUCCESS — ${env.APP_NAME} v${env.APP_VERSION}"
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'good',
-                message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
-            )
-            emailext(
-                to:       'devteam@techbuild.io',
-                subject:  "BUILD PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:     "Successful build for ${env.APP_NAME} v${env.APP_VERSION}\nURL: ${env.BUILD_URL}"
-            )
         }
         failure {
             echo "PIPELINE FAILED — check logs at ${env.BUILD_URL}"
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'danger',
-                message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
-            )
-            emailext(
-                to:       'devteam@techbuild.io',
-                subject:  "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:     "Build ${env.BUILD_NUMBER} failed.\nConsole: ${env.BUILD_URL}console"
-            )
-        }
-        unstable {
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'warning',
-                message: "BUILD UNSTABLE: ${env.APP_NAME} #${env.BUILD_NUMBER} — test failures | ${env.BUILD_URL}"
-            )
         }
         always {
             cleanWs()    // Clean workspace after every build to free disk space
