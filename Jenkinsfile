@@ -1,9 +1,15 @@
 // Repository: https://github.com/jagdishmodi/hello-world-2.git
-// Pipeline: Checkout → Build → Test → Quality Analysis → Archive → Notify
+// Pipeline: Checkout → Build → Test → Quality Analysis → Quality Gate → Package & Archive → Publish Artifact
 
 pipeline {
 
-    agent any
+    // ── Docker agent for isolated, reproducible builds ─────────────────────
+    agent {
+        docker {
+            image 'eclipse-temurin:17-jdk-alpine'
+            args  '-v $HOME/.m2:/root/.m2'    // Cache Maven dependencies between builds
+        }
+    }
 
     // ── Environment variables ───────────────────────────────────────────────
     environment {
@@ -28,6 +34,7 @@ pipeline {
         githubPush()    // Requires GitHub plugin — responds to webhook events
     }
 
+    // ══════════════════════════════════════════════════════════════════════
     stages {
 
         // ── STAGE 1: Checkout ─────────────────────────────────────────────
@@ -56,21 +63,23 @@ pipeline {
         stage('Test') {
             tools { maven 'Maven-3.9' }
             steps {
-                // Attaches JaCoCo agent dynamically during test execution
-                sh 'mvn test org.jacoco:jacoco-maven-plugin:0.8.11:prepare-agent -B'
+                sh 'mvn test -B'
             }
             post {
                 always {
                     // Publish JUnit test results regardless of pass/fail
-                    junit(testResults: 'target/surefire-reports/**/*.xml', allowEmptyResults: false)
+                    junit(testResults: 'target/surefire-reports/**/*.xml',
+                          allowEmptyResults: false)
                 }
                 unstable {
                     echo 'WARNING: Tests failed — build marked UNSTABLE.'
-                    // Enforce 80% pass rate:
+                    // Enforce 80% pass rate threshold:
                     script {
-                        def results = currentBuild.rawBuild.getAction(hudson.tasks.test.AbstractTestResultAction.class)
+                        def results = currentBuild.rawBuild.getAction(
+                            hudson.tasks.test.AbstractTestResultAction.class)
                         if (results) {
-                            def passRate = (results.totalCount - results.failCount) / results.totalCount * 100
+                            def passRate = (results.totalCount - results.failCount) /
+                                           results.totalCount * 100
                             if (passRate < 80) {
                                 error("Test pass rate ${passRate.round(1)}% is below 80% threshold!")
                             }
@@ -86,13 +95,12 @@ pipeline {
             steps {
                 withSonarQubeEnv('SonarQube-Local') {
                     sh """
-                        mvn org.jacoco:jacoco-maven-plugin:0.8.11:report \
-                            sonar:sonar \
-                            -Dsonar.projectKey=${env.APP_NAME} \
-                            -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                            -Dsonar.projectVersion=${env.APP_VERSION} \
-                            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                            -B
+                        mvn sonar:sonar \
+                          -Dsonar.projectKey=${env.APP_NAME} \
+                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
+                          -Dsonar.projectVersion=${env.APP_VERSION} \
+                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                          -B
                     """
                 }
             }
@@ -100,6 +108,7 @@ pipeline {
 
         // ── STAGE 5: Quality Gate ─────────────────────────────────────────
         stage('Quality Gate') {
+            agent none
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -140,7 +149,7 @@ pipeline {
             }
         }
 
-    }   // end stages
+    }    // end stages
 
     // ── Post-build actions ─────────────────────────────────────────────────
     post {
@@ -152,9 +161,9 @@ pipeline {
                 message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
             )
             emailext(
-                to:      'devteam@techbuild.io',
-                subject: "BUILD PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:    "Successful build for ${env.APP_NAME} v${env.APP_VERSION}\nURL: ${env.BUILD_URL}"
+                to:       'devteam@techbuild.io',
+                subject:  "BUILD PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body:     "Successful build for ${env.APP_NAME} v${env.APP_VERSION}\nURL: ${env.BUILD_URL}"
             )
         }
         failure {
@@ -165,9 +174,9 @@ pipeline {
                 message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
             )
             emailext(
-                to:      'devteam@techbuild.io',
-                subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:    "Build ${env.BUILD_NUMBER} failed.\nConsole: ${env.BUILD_URL}console"
+                to:       'devteam@techbuild.io',
+                subject:  "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body:     "Build ${env.BUILD_NUMBER} failed.\nConsole: ${env.BUILD_URL}console"
             )
         }
         unstable {
@@ -181,4 +190,5 @@ pipeline {
             cleanWs()    // Clean workspace after every build to free disk space
         }
     }
-}
+
+}    // end pipeline
