@@ -40,8 +40,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT[0..7]}"
-                sh 'git log --oneline -5'
+                echo "Branch: ${env.GIT_BRANCH ?: 'main'} | Commit: ${env.GIT_COMMIT ? env.GIT_COMMIT[0..7] : 'HEAD'}"
             }
         }
 
