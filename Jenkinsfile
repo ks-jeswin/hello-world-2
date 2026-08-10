@@ -44,7 +44,10 @@ pipeline {
             steps {
                 checkout scm
                 echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT[0..7]}"
-                sh 'git log --oneline -5'
+                sh 'git log --oneline -5'sh '''
+                    apk add --no-cache git
+                    git log --oneline -5
+                '''
             }
         }
     }
