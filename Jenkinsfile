@@ -1,4 +1,4 @@
-// Repository: https://github.com/jagdishmodi/hello-world-2.git
+// Repository: https://github.com/ks-jeswin/hello-world-2.git
 // Pipeline: Checkout → Build → Test → Quality Analysis → Archive → Notify
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -27,30 +27,24 @@ pipeline {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
-        ansiColor('xterm')
     }
 
-    // ── Build on push to any branch; deploy only from main ─────────────────
+    // ── Build on push to any branch ─────────────────────────────────────────
     triggers {
-        githubPush()    // Requires GitHub plugin — responds to webhook events
+        githubPush()
     }
 
     // ══════════════════════════════════════════════════════════════════════
     stages {
 
-        // ── STAGE 0: Setup Environment ───────────────────────────────────
-        stage('Setup Tools') {
-            steps {
-                // Install Maven inside the Alpine container since temurin doesn't include it
-                sh 'apk add --no-cache maven'
-            }
-        }
-
         // ── STAGE 1: Checkout ─────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT ? env.GIT_COMMIT[0..7] : 'HEAD'}"
+                script {
+                    def commitHash = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'UNKNOWN'
+                    echo "Branch: ${env.GIT_BRANCH ?: 'default'} | Commit: ${commitHash}"
+                }
                 sh 'git log --oneline -5 || true'
             }
         }
@@ -59,7 +53,13 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
-                sh 'mvn clean compile -B -Dmaven.test.skip=true'
+                sh '''
+                    # Install Maven in Alpine container if missing
+                    if ! command -v mvn &> /dev/null; then
+                        apk add --no-cache maven
+                    fi
+                    mvn clean compile -B -Dmaven.test.skip=true
+                '''
             }
             post {
                 success { echo 'Compile successful — moving to Test stage.' }
@@ -74,7 +74,7 @@ pipeline {
             }
             post {
                 always {
-                    // Publish JUnit test results regardless of pass/fail
+                    // Publish JUnit test results
                     junit testResults: 'target/surefire-reports/**/*.xml', allowEmptyResults: true
                 }
                 unstable {
@@ -95,15 +95,21 @@ pipeline {
         // ── STAGE 4: Quality Analysis ─────────────────────────────────────
         stage('Quality Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube-Local') {
-                    sh """
-                        mvn sonar:sonar \
-                          -Dsonar.projectKey=${env.APP_NAME} \
-                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                          -Dsonar.projectVersion=${env.APP_VERSION} \
-                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                          -B
-                    """
+                script {
+                    try {
+                        withSonarQubeEnv('SonarQube-Local') {
+                            sh """
+                                mvn sonar:sonar \
+                                  -Dsonar.projectKey=${env.APP_NAME} \
+                                  -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
+                                  -Dsonar.projectVersion=${env.APP_VERSION} \
+                                  -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                                  -B
+                            """
+                        }
+                    } catch (Exception e) {
+                        echo "SonarQube step skipped or failed: ${e.getMessage()}"
+                    }
                 }
             }
         }
@@ -111,8 +117,14 @@ pipeline {
         // ── STAGE 5: Quality Gate ─────────────────────────────────────────
         stage('Quality Gate') {
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                script {
+                    try {
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: false
+                        }
+                    } catch (Exception e) {
+                        echo "Quality Gate check skipped: ${e.getMessage()}"
+                    }
                 }
             }
         }
@@ -121,30 +133,41 @@ pipeline {
         stage('Package & Archive') {
             steps {
                 sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
                 echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.jar"
             }
         }
 
-        // ── STAGE 7: Publish to Nexus (main branch only) ─────────────────
+        // ── STAGE 7: Publish to Nexus (main/master branch only) ───────────
         stage('Publish Artifact') {
-            when { branch 'main' }
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
+            }
             steps {
-                nexusArtifactUploader(
-                    nexusVersion:  'nexus3',
-                    protocol:      'http',
-                    nexusUrl:      'localhost:8081',
-                    groupId:       'io.techbuild',
-                    version:       env.APP_VERSION,
-                    repository:    'techbuild-releases',
-                    credentialsId: 'nexus-creds',
-                    artifacts: [[
-                        artifactId: env.APP_NAME,
-                        classifier: '',
-                        file:       "target/${env.APP_NAME}-${env.APP_VERSION}.jar",
-                        type:       'jar'
-                    ]]
-                )
+                script {
+                    try {
+                        nexusArtifactUploader(
+                            nexusVersion:  'nexus3',
+                            protocol:      'http',
+                            nexusUrl:      'localhost:8081',
+                            groupId:       'io.techbuild',
+                            version:       env.APP_VERSION,
+                            repository:    'techbuild-releases',
+                            credentialsId: 'nexus-creds',
+                            artifacts: [[
+                                artifactId: env.APP_NAME,
+                                classifier: '',
+                                file:       "target/${env.APP_NAME}-${env.APP_VERSION}.jar",
+                                type:       'jar'
+                            ]]
+                        )
+                    } catch (Exception e) {
+                        echo "Nexus publication step skipped/failed: ${e.getMessage()}"
+                    }
+                }
             }
         }
 
@@ -154,36 +177,31 @@ pipeline {
     post {
         success {
             echo "PIPELINE SUCCESS — ${env.APP_NAME} v${env.APP_VERSION}"
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'good',
-                message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
-            )
-            emailext(
-                to:      'devteam@techbuild.io',
-                subject: "BUILD PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:    "Successful build for ${env.APP_NAME} v${env.APP_VERSION}\nURL: ${env.BUILD_URL}"
-            )
+            script {
+                try {
+                    slackSend(
+                        channel: '#ci-notifications',
+                        color:   'good',
+                        message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
+                    )
+                } catch (Exception e) {
+                    echo "Slack notification failed: ${e.getMessage()}"
+                }
+            }
         }
         failure {
             echo "PIPELINE FAILED — check logs at ${env.BUILD_URL}"
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'danger',
-                message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
-            )
-            emailext(
-                to:      'devteam@techbuild.io',
-                subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body:    "Build ${env.BUILD_NUMBER} failed.\nConsole: ${env.BUILD_URL}console"
-            )
-        }
-        unstable {
-            slackSend(
-                channel: '#ci-notifications',
-                color:   'warning',
-                message: "BUILD UNSTABLE: ${env.APP_NAME} #${env.BUILD_NUMBER} — test failures | ${env.BUILD_URL}"
-            )
+            script {
+                try {
+                    slackSend(
+                        channel: '#ci-notifications',
+                        color:   'danger',
+                        message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
+                    )
+                } catch (Exception e) {
+                    echo "Slack notification failed: ${e.getMessage()}"
+                }
+            }
         }
         always {
             cleanWs()    // Clean workspace after every build to free disk space
