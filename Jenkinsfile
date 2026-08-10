@@ -88,15 +88,18 @@ pipeline {
         // ── STAGE 4: Quality Analysis ─────────────────────────────────────
         stage('Quality Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube-Local') {
-                    sh """
-                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-                          -Dsonar.projectKey=${env.APP_NAME} \
-                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                          -Dsonar.projectVersion=${env.APP_VERSION} \
-                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                          -B
-                    """
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                    withSonarQubeEnv('SonarQube-Local') {
+                        sh """
+                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3585:sonar \
+                              -Dsonar.projectKey=${env.APP_NAME} \
+                              -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
+                              -Dsonar.projectVersion=${env.APP_VERSION} \
+                              -Dsonar.token=${SONAR_AUTH_TOKEN} \
+                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                              -B
+                        """
+                    }
                 }
             }
         }
