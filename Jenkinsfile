@@ -29,7 +29,6 @@ pipeline {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
-        ansiColor('xterm')
     }
 
     // ── Build on push to any branch; deploy only from main ─────────────────
