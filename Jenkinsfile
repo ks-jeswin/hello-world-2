@@ -3,10 +3,10 @@
 
 pipeline {
 
-    // ── Docker agent for isolated, reproducible builds ─────────────────────
+    // ── Docker agent with Maven and Java pre-installed ───────────────────────
     agent {
         docker {
-            image 'eclipse-temurin:17-jdk-alpine'
+            image 'maven:3.9-eclipse-temurin-17-alpine'
             args  '-v $HOME/.m2:/root/.m2'    // Cache Maven dependencies between builds
         }
     }
@@ -48,7 +48,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
-                sh 'chmod +x mvnw && ./mvnw clean compile -B -Dmaven.test.skip=true'
+                sh 'mvn clean compile -B -Dmaven.test.skip=true'
             }
             post {
                 success { echo 'Compile successful — moving to Test stage.' }
@@ -59,7 +59,7 @@ pipeline {
         // ── STAGE 3: Test ─────────────────────────────────────────────────
         stage('Test') {
             steps {
-                sh './mvnw test -B'
+                sh 'mvn test -B'
             }
             post {
                 always {
@@ -90,7 +90,7 @@ pipeline {
             steps {
                 withSonarQubeEnv('SonarQube-Local') {
                     sh """
-                        ./mvnw sonar:sonar \
+                        mvn sonar:sonar \
                           -Dsonar.projectKey=${env.APP_NAME} \
                           -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
                           -Dsonar.projectVersion=${env.APP_VERSION} \
@@ -114,7 +114,7 @@ pipeline {
         // ── STAGE 6: Package & Archive ────────────────────────────────────
         stage('Package & Archive') {
             steps {
-                sh "./mvnw package -DskipTests -B -Drevision=${env.APP_VERSION}"
+                sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
                 archiveArtifacts(artifacts: 'target/*.jar', fingerprint: true)
                 echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.jar"
             }
