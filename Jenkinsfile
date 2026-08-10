@@ -24,6 +24,7 @@ pipeline {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
+        ansiColor('xterm') // requires AnsiColor plugin
     }
 
     triggers {
@@ -36,6 +37,7 @@ pipeline {
             steps {
                 checkout scm
                 echo "Branch: ${env.GIT_BRANCH ?: 'main'} | Commit: ${env.GIT_COMMIT ? env.GIT_COMMIT[0..7] : 'HEAD'}"
+                sh 'git log --oneline -5'
             }
         }
 
@@ -56,7 +58,13 @@ pipeline {
                 // catchError lets junit still publish results even if tests fail,
                 // while marking the stage UNSTABLE so we can evaluate pass rate below.
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    sh 'mvn test jacoco:report -B'
+                    // Fully-qualified plugin coordinates used instead of the
+                    // 'jacoco' prefix shorthand, since prefix resolution
+                    // fails with "No plugin found for prefix 'jacoco'" unless
+                    // org.jacoco:jacoco-maven-plugin is declared in pom.xml.
+                    // Best fix long-term is to add the plugin to pom.xml,
+                    // but this works regardless of pom.xml configuration.
+                    sh 'mvn test org.jacoco:jacoco-maven-plugin:0.8.12:report -B'
                 }
             }
             post {
@@ -150,9 +158,36 @@ pipeline {
     post {
         success {
             echo "PIPELINE SUCCESS — ${env.APP_NAME} v${env.APP_VERSION}"
+            slackSend(
+                channel: '#ci-notifications',
+                color:   'good',
+                message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
+            )
+            emailext(
+                to:      'devteam@techbuild.io',
+                subject: "BUILD PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body:    "Successful build for ${env.APP_NAME} v${env.APP_VERSION}\nURL: ${env.BUILD_URL}"
+            )
         }
         failure {
             echo "PIPELINE FAILED — check logs at ${env.BUILD_URL}"
+            slackSend(
+                channel: '#ci-notifications',
+                color:   'danger',
+                message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
+            )
+            emailext(
+                to:      'devteam@techbuild.io',
+                subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body:    "Build ${env.BUILD_NUMBER} failed.\nConsole: ${env.BUILD_URL}console"
+            )
+        }
+        unstable {
+            slackSend(
+                channel: '#ci-notifications',
+                color:   'warning',
+                message: "BUILD UNSTABLE: ${env.APP_NAME} #${env.BUILD_NUMBER} — test failures | ${env.BUILD_URL}"
+            )
         }
         always {
             cleanWs()
