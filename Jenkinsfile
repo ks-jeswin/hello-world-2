@@ -16,6 +16,7 @@ pipeline {
         MAVEN_OPTS   = '-Xmx1024m -XX:+TieredCompilation'
         SONAR_URL    = 'http://sonarqube:9000'
         ARTIFACT_DIR = 'target'
+        MIN_PASS_RATE = 80
     }
 
     options {
@@ -51,22 +52,31 @@ pipeline {
 
         stage('Test') {
             steps {
-                // Generates JaCoCo report alongside test execution
-                sh 'mvn test jacoco:report -B'
+                // Generates JaCoCo report alongside test execution.
+                // catchError lets junit still publish results even if tests fail,
+                // while marking the stage UNSTABLE so we can evaluate pass rate below.
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'mvn test jacoco:report -B'
+                }
             }
             post {
                 always {
                     junit(testResults: 'target/surefire-reports/**/*.xml', allowEmptyResults: false)
                 }
                 unstable {
-                    echo 'WARNING: Tests failed — build marked UNSTABLE.'
                     script {
                         def results = currentBuild.rawBuild.getAction(hudson.tasks.test.AbstractTestResultAction.class)
-                        if (results) {
+                        if (results && results.totalCount > 0) {
                             def passRate = (results.totalCount - results.failCount) / results.totalCount * 100
-                            if (passRate < 80) {
-                                error("Test pass rate ${passRate.round(1)}% is below 80% threshold!")
+                            echo "Test pass rate: ${passRate.round(1)}% (threshold: ${env.MIN_PASS_RATE}%)"
+                            if (passRate < env.MIN_PASS_RATE.toInteger()) {
+                                error("Test pass rate ${passRate.round(1)}% is below ${env.MIN_PASS_RATE}% threshold!")
+                            } else {
+                                echo 'WARNING: Some tests failed, but pass rate is within acceptable threshold — continuing.'
                             }
+                        } else {
+                            echo 'WARNING: Test stage unstable and no test result data found — treating as failure.'
+                            error('No test results available to evaluate pass rate.')
                         }
                     }
                 }
@@ -77,22 +87,24 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Local') {
-                        sh """
+                        // Token passed via -Dsonar.login read from env inside sh,
+                        // not interpolated into the script text, to avoid leaking
+                        // it into build logs if verbose/debug output is enabled.
+                        sh '''
                             mvn sonar:sonar \
-                              -Dsonar.projectKey=${env.APP_NAME} \
-                              -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                              -Dsonar.projectVersion=${env.APP_VERSION} \
+                              -Dsonar.projectKey=${APP_NAME} \
+                              -Dsonar.projectName="TechBuild ${APP_NAME}" \
+                              -Dsonar.projectVersion=${APP_VERSION} \
                               -Dsonar.token=${SONAR_AUTH_TOKEN} \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -B
-                        """
+                        '''
                     }
                 }
             }
         }
 
         stage('Quality Gate') {
-            // Removed erroneous "agent none" directive
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -111,21 +123,25 @@ pipeline {
         stage('Publish Artifact') {
             when { branch 'main' }
             steps {
-                nexusArtifactUploader(
-                    nexusVersion:  'nexus3',
-                    protocol:      'http',
-                    nexusUrl:      'host.docker.internal:8081', // Corrected loopback endpoint
-                    groupId:       'io.techbuild',
-                    version:       env.APP_VERSION,
-                    repository:    'techbuild-releases',
-                    credentialsId: 'nexus-creds',
-                    artifacts: [[
-                        artifactId: env.APP_NAME,
-                        classifier: '',
-                        file:       "target/${env.APP_NAME}-${env.APP_VERSION}.jar",
-                        type:       'jar'
-                    ]]
-                )
+                retry(3) {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        nexusArtifactUploader(
+                            nexusVersion:  'nexus3',
+                            protocol:      'http',
+                            nexusUrl:      'host.docker.internal:8081', // requires host-gateway mapping on Linux agents
+                            groupId:       'io.techbuild',
+                            version:       env.APP_VERSION,
+                            repository:    'techbuild-releases',
+                            credentialsId: 'nexus-creds',
+                            artifacts: [[
+                                artifactId: env.APP_NAME,
+                                classifier: '',
+                                file:       "target/${env.APP_NAME}-${env.APP_VERSION}.jar",
+                                type:       'jar'
+                            ]]
+                        )
+                    }
+                }
             }
         }
 
