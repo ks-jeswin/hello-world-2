@@ -43,7 +43,7 @@ pipeline {
             steps {
                 checkout scm
                 echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT[0..7]}"
-                sh 'git log --oneline -5'
+                sh 'echo "Checkout stage completed successfully for commit ${env.GIT_COMMIT}"'
             }
         }
 }
