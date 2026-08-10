@@ -47,5 +47,7 @@ pipeline {
                 sh 'git log --oneline -5'
             }
         }
+}
+}
  
 
