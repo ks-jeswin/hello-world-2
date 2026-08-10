@@ -50,7 +50,7 @@ pipeline {
             tools { maven 'Maven-3.9' }
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
-                sh 'mvn clean compile -B -Dmaven.test.skip=true'
+                sh 'chmod +x mvnw && ./mvnw clean compile -B -Dmaven.test.skip=true'
             }
             post {
                 success { echo 'Compile successful — moving to Test stage.' }
