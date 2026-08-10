@@ -19,7 +19,7 @@ pipeline {
     stages {
         stage('Build & Test') {
             steps {
-                // Attaches the JaCoCo javaagent dynamically during test execution without pom modifications
+                // Prepares JaCoCo agent without modifying pom.xml
                 sh 'mvn clean test org.jacoco:jacoco-maven-plugin:0.8.11:prepare-agent -B'
             }
             post {
@@ -32,12 +32,13 @@ pipeline {
         stage('Quality Analysis') {
             steps {
                 echo 'Running SonarQube analysis...'
-                // Explicitly runs JaCoCo report generation and Sonar analysis with workspace home directory
+                // Added -e -X for full debug logs and disabled automatic JRE provisioning
                 sh '''
                     mvn org.jacoco:jacoco-maven-plugin:0.8.11:report \
                         org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar \
                         -Dsonar.userHome=${WORKSPACE}/.sonar \
-                        -B
+                        -Dsonar.scanner.skipJreProvisioning=true \
+                        -e -X -B
                 '''
             }
         }
