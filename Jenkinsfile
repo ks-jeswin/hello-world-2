@@ -3,15 +3,13 @@
 
 pipeline {
 
-    // ── Docker agent with Maven and Java pre-installed ───────────────────────
     agent {
         docker {
             image 'maven:3.9-eclipse-temurin-17-alpine'
-            args  '-v $HOME/.m2:/root/.m2'    // Cache Maven dependencies between builds
+            args  '-v $HOME/.m2:/root/.m2'
         }
     }
 
-    // ── Environment variables ───────────────────────────────────────────────
     environment {
         APP_NAME     = 'hello-world-2'
         APP_VERSION  = "1.0.${env.BUILD_NUMBER}"
@@ -20,7 +18,6 @@ pipeline {
         ARTIFACT_DIR = 'target'
     }
 
-    // ── Pipeline-wide options ───────────────────────────────────────────────
     options {
         timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
@@ -28,15 +25,12 @@ pipeline {
         timestamps()
     }
 
-    // ── Build on push to any branch; deploy only from main ─────────────────
     triggers {
-        githubPush()    // Requires GitHub plugin — responds to webhook events
+        githubPush()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
     stages {
 
-        // ── STAGE 1: Checkout ─────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
@@ -44,7 +38,6 @@ pipeline {
             }
         }
 
-        // ── STAGE 2: Build ────────────────────────────────────────────────
         stage('Build') {
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
@@ -56,26 +49,21 @@ pipeline {
             }
         }
 
-        // ── STAGE 3: Test ─────────────────────────────────────────────────
         stage('Test') {
             steps {
-                sh 'mvn test -B'
+                // Generates JaCoCo report alongside test execution
+                sh 'mvn test jacoco:report -B'
             }
             post {
                 always {
-                    // Publish JUnit test results regardless of pass/fail
-                    junit(testResults: 'target/surefire-reports/**/*.xml',
-                          allowEmptyResults: false)
+                    junit(testResults: 'target/surefire-reports/**/*.xml', allowEmptyResults: false)
                 }
                 unstable {
                     echo 'WARNING: Tests failed — build marked UNSTABLE.'
-                    // Enforce 80% pass rate threshold:
                     script {
-                        def results = currentBuild.rawBuild.getAction(
-                            hudson.tasks.test.AbstractTestResultAction.class)
+                        def results = currentBuild.rawBuild.getAction(hudson.tasks.test.AbstractTestResultAction.class)
                         if (results) {
-                            def passRate = (results.totalCount - results.failCount) /
-                                           results.totalCount * 100
+                            def passRate = (results.totalCount - results.failCount) / results.totalCount * 100
                             if (passRate < 80) {
                                 error("Test pass rate ${passRate.round(1)}% is below 80% threshold!")
                             }
@@ -85,13 +73,12 @@ pipeline {
             }
         }
 
-        // ── STAGE 4: Quality Analysis ─────────────────────────────────────
         stage('Quality Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Local') {
                         sh """
-                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3585:sonar \
+                            mvn sonar:sonar \
                               -Dsonar.projectKey=${env.APP_NAME} \
                               -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
                               -Dsonar.projectVersion=${env.APP_VERSION} \
@@ -104,9 +91,8 @@ pipeline {
             }
         }
 
-        // ── STAGE 5: Quality Gate ─────────────────────────────────────────
         stage('Quality Gate') {
-            agent none
+            // Removed erroneous "agent none" directive
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -114,7 +100,6 @@ pipeline {
             }
         }
 
-        // ── STAGE 6: Package & Archive ────────────────────────────────────
         stage('Package & Archive') {
             steps {
                 sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
@@ -123,14 +108,13 @@ pipeline {
             }
         }
 
-        // ── STAGE 7: Publish to Nexus (main branch only) ─────────────────
         stage('Publish Artifact') {
             when { branch 'main' }
             steps {
                 nexusArtifactUploader(
                     nexusVersion:  'nexus3',
                     protocol:      'http',
-                    nexusUrl:      'localhost:8081',
+                    nexusUrl:      'host.docker.internal:8081', // Corrected loopback endpoint
                     groupId:       'io.techbuild',
                     version:       env.APP_VERSION,
                     repository:    'techbuild-releases',
@@ -145,9 +129,8 @@ pipeline {
             }
         }
 
-    }    // end stages
+    }
 
-    // ── Post-build actions ─────────────────────────────────────────────────
     post {
         success {
             echo "PIPELINE SUCCESS — ${env.APP_NAME} v${env.APP_VERSION}"
@@ -156,8 +139,7 @@ pipeline {
             echo "PIPELINE FAILED — check logs at ${env.BUILD_URL}"
         }
         always {
-            cleanWs()    // Clean workspace after every build to free disk space
+            cleanWs()
         }
     }
-
-}    // end pipeline
+}
