@@ -4,11 +4,11 @@
 
 pipeline {
 
-    // ── Docker agent for isolated, reproducible builds ─────────────────────
+    // ── Docker agent using pre-built Maven + JDK 17 ─────────────────────────
     agent {
         docker {
-            image 'eclipse-temurin:17-jdk-alpine'
-            args  '-v $HOME/.m2:/root/.m2'    // Cache Maven dependencies between builds
+            image 'maven:3.9.6-eclipse-temurin-17-alpine'
+            args  '-v $HOME/.m2:/root/.m2'    // Cache Maven dependencies
         }
     }
 
@@ -29,7 +29,7 @@ pipeline {
         timestamps()
     }
 
-    // ── Build on push to any branch ─────────────────────────────────────────
+    // ── Triggers ────────────────────────────────────────────────────────────
     triggers {
         githubPush()
     }
@@ -45,7 +45,6 @@ pipeline {
                     def commitHash = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'UNKNOWN'
                     echo "Branch: ${env.GIT_BRANCH ?: 'default'} | Commit: ${commitHash}"
                 }
-                sh 'git log --oneline -5 || true'
             }
         }
 
@@ -53,13 +52,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
-                sh '''
-                    # Install Maven in Alpine container if missing
-                    if ! command -v mvn &> /dev/null; then
-                        apk add --no-cache maven
-                    fi
-                    mvn clean compile -B -Dmaven.test.skip=true
-                '''
+                sh 'mvn clean compile -B -Dmaven.test.skip=true'
             }
             post {
                 success { echo 'Compile successful — moving to Test stage.' }
@@ -74,7 +67,6 @@ pipeline {
             }
             post {
                 always {
-                    // Publish JUnit test results
                     junit testResults: 'target/surefire-reports/**/*.xml', allowEmptyResults: true
                 }
                 unstable {
@@ -108,7 +100,7 @@ pipeline {
                             """
                         }
                     } catch (Exception e) {
-                        echo "SonarQube step skipped or failed: ${e.getMessage()}"
+                        echo "SonarQube step skipped/failed: ${e.getMessage()}"
                     }
                 }
             }
@@ -123,7 +115,7 @@ pipeline {
                             waitForQualityGate abortPipeline: false
                         }
                     } catch (Exception e) {
-                        echo "Quality Gate check skipped: ${e.getMessage()}"
+                        echo "Quality Gate check skipped/failed: ${e.getMessage()}"
                     }
                 }
             }
@@ -138,7 +130,7 @@ pipeline {
             }
         }
 
-        // ── STAGE 7: Publish to Nexus (main/master branch only) ───────────
+        // ── STAGE 7: Publish to Nexus ─────────────────────────────────────
         stage('Publish Artifact') {
             when {
                 anyOf {
@@ -185,7 +177,7 @@ pipeline {
                         message: "BUILD PASSED: ${env.APP_NAME} v${env.APP_VERSION} | ${env.BUILD_URL}"
                     )
                 } catch (Exception e) {
-                    echo "Slack notification failed: ${e.getMessage()}"
+                    echo "Slack notification skipped/failed: ${e.getMessage()}"
                 }
             }
         }
@@ -199,12 +191,12 @@ pipeline {
                         message: "BUILD FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} | ${env.BUILD_URL}"
                     )
                 } catch (Exception e) {
-                    echo "Slack notification failed: ${e.getMessage()}"
+                    echo "Slack notification skipped/failed: ${e.getMessage()}"
                 }
             }
         }
         always {
-            cleanWs()    // Clean workspace after every build to free disk space
+            cleanWs()    // Clean workspace to free disk space
         }
     }
 
