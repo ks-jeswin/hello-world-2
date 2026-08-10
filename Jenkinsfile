@@ -1,4 +1,4 @@
-// Repository: https://github.com/jagdishmodi/hello-world-2.git
+// Repository: https://github.com/ks-jeswin/hello-world-2.git
 // Pipeline: Checkout → Build → Test → Quality Analysis → Quality Gate → Package & Archive → Publish Artifact
 
 pipeline {
@@ -26,7 +26,6 @@ pipeline {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
-        ansiColor('xterm')
     }
 
     // ── Build on push to any branch; deploy only from main ─────────────────
