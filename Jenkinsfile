@@ -2,7 +2,7 @@ pipeline {
 
     agent {
         docker {
-            image 'eclipse-temurin:17-jdk-alpine'
+            image 'maven:3.9-eclipse-temurin-17'
             args  '-v $HOME/.m2:/root/.m2'
         }
     }
@@ -10,7 +10,6 @@ pipeline {
     environment {
         APP_NAME     = 'hello-world-2'
         APP_VERSION  = "1.0.${env.BUILD_NUMBER}"
-        MAVEN_OPTS   = '-Xmx1024m -XX:+TieredCompilation'
     }
 
     options {
@@ -34,7 +33,6 @@ pipeline {
         }
 
         stage('Build') {
-            tools { maven 'Maven-3.9' }
             steps {
                 echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
                 sh 'mvn clean compile -B -Dmaven.test.skip=true'
