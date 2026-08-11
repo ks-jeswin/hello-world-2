@@ -1,79 +1,62 @@
+// Repository: https://github.com/ks-jeswin/hello-world-2.git
+// Pipeline: Checkout → Build → Test → Quality Analysis → Quality Gate → Package & Archive → Publish Artifact
+
 pipeline {
-<<<<<<< HEAD
 
     agent {
         docker {
             image 'maven:3.9-eclipse-temurin-17-alpine'
             args  '-v $HOME/.m2:/root/.m2'
-=======
-    agent {
-        docker {
-            image 'maven:3.9.6-eclipse-temurin-17'
-            args '-u root:root -v $HOME/.m2:/root/.m2'
-            reuseNode true
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
         }
     }
 
     environment {
-<<<<<<< HEAD
-        APP_NAME     = 'hello-world-2'
-        APP_VERSION  = "1.0.${env.BUILD_NUMBER}"
-        MAVEN_OPTS   = '-Xmx1024m -XX:+TieredCompilation'
-        SONAR_URL    = 'http://sonarqube:9000'
-        ARTIFACT_DIR = 'target'
+        APP_NAME      = 'hello-world-2'
+        APP_VERSION   = "1.0.${env.BUILD_NUMBER}"
+        MAVEN_OPTS    = '-Xmx1024m -XX:+TieredCompilation'
+        SONAR_URL     = 'http://sonarqube:9000'
+        ARTIFACT_DIR  = 'target'
         MIN_PASS_RATE = 80
-=======
-        MAVEN_OPTS = '-Dmaven.repo.local=/root/.m2/repository'
-        MVN_CMD = 'mvn -B -ntp'
-        APP_NAME = 'hello-world'
-        APP_VERSION = '1.0-SNAPSHOT'
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
     }
 
     options {
         timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
         ansiColor('xterm') // requires AnsiColor plugin
     }
 
-<<<<<<< HEAD
     triggers {
         githubPush()
     }
 
-=======
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
     stages {
 
         stage('Checkout') {
             steps {
                 checkout scm
-<<<<<<< HEAD
-                echo "Branch: ${env.GIT_BRANCH ?: 'main'} | Commit: ${env.GIT_COMMIT ? env.GIT_COMMIT[0..7] : 'HEAD'}"
-=======
-
-                echo "Branch: ${env.GIT_BRANCH}"
-                echo "Commit: ${env.GIT_COMMIT}"
-
-                sh 'java -version'
-                sh 'mvn -version'
+                // Avoids "detected dubious ownership in repository" git errors
+                // when the Jenkins process user differs from the workspace owner.
                 sh 'git config --global --add safe.directory "$WORKSPACE"'
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
+                echo "Branch: ${env.GIT_BRANCH ?: 'main'} | Commit: ${env.GIT_COMMIT ? env.GIT_COMMIT[0..7] : 'HEAD'}"
                 sh 'git log --oneline -5'
             }
         }
 
         stage('Build') {
             steps {
-                sh "${MVN_CMD} clean compile"
+                echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
+                sh 'mvn clean compile -B -Dmaven.test.skip=true'
+            }
+            post {
+                success { echo 'Compile successful — moving to Test stage.' }
+                failure { echo 'Compile FAILED — check pom.xml and source errors.' }
             }
         }
 
         stage('Test') {
             steps {
-<<<<<<< HEAD
                 // Generates JaCoCo report alongside test execution.
                 // catchError lets junit still publish results even if tests fail,
                 // while marking the stage UNSTABLE so we can evaluate pass rate below.
@@ -82,8 +65,6 @@ pipeline {
                     // 'jacoco' prefix shorthand, since prefix resolution
                     // fails with "No plugin found for prefix 'jacoco'" unless
                     // org.jacoco:jacoco-maven-plugin is declared in pom.xml.
-                    // Best fix long-term is to add the plugin to pom.xml,
-                    // but this works regardless of pom.xml configuration.
                     sh 'mvn test org.jacoco:jacoco-maven-plugin:0.8.12:report -B'
                 }
             }
@@ -107,28 +88,21 @@ pipeline {
                             error('No test results available to evaluate pass rate.')
                         }
                     }
-=======
-                sh "${MVN_CMD} test"
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
                 }
             }
         }
 
         stage('Quality Analysis') {
-            tools { maven 'Maven-3.9' }
             steps {
-<<<<<<< HEAD
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Local') {
-                        // Token passed via -Dsonar.login read from env inside sh,
-                        // not interpolated into the script text, to avoid leaking
-                        // it into build logs if verbose/debug output is enabled.
+                        // Fully-qualified plugin coordinates, same reasoning as the
+                        // jacoco fix above — 'sonar:sonar' prefix resolution can fail
+                        // the same way if the plugin isn't declared in pom.xml.
+                        // Token read from env inside sh (not interpolated into the
+                        // script text) to avoid leaking it into verbose build logs.
                         sh '''
-                            mvn sonar:sonar \
+                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
                               -Dsonar.projectKey=${APP_NAME} \
                               -Dsonar.projectName="TechBuild ${APP_NAME}" \
                               -Dsonar.projectVersion=${APP_VERSION} \
@@ -221,19 +195,5 @@ pipeline {
         always {
             cleanWs()
         }
-=======
-                withSonarQubeEnv('SonarQube') {
-                    sh """
-                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-                          -Dsonar.projectKey=${env.APP_NAME} \
-                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                          -Dsonar.projectVersion=${env.APP_VERSION} \
-                         -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                         -B
-                    """
-                }
-            }
-        }
->>>>>>> a4fea5f (ci: add declarative pipeline with 7 stages)
     }
 }
