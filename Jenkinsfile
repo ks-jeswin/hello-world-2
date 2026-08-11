@@ -31,5 +31,17 @@ pipeline {
                 echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT[0..7]}"
             }
         }
+
+        stage('Build') {
+            tools { maven 'Maven-3.9' }
+            steps {
+                echo "Building ${env.APP_NAME} v${env.APP_VERSION}"
+                sh 'mvn clean compile -B -Dmaven.test.skip=true'
+            }
+            post {
+                success { echo 'Compile successful — moving to Test stage.' }
+                failure { echo 'Compile FAILED — check pom.xml and source errors.' }
+            }
+        }
     }
 }
