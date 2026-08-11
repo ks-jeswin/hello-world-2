@@ -64,15 +64,18 @@ pipeline {
         stage('Quality Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube-Local') {
-                    sh """
-                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.10.0.2594:sonar \
-                          -Dsonar.projectKey=${env.APP_NAME} \
-                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
-                          -Dsonar.projectVersion=${env.APP_VERSION} \
-                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                          -Dsonar.token=\$SONAR_AUTH_TOKEN \
-                          -B
-                    """
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh """
+                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.10.0.2594:sonar \
+                              -Dsonar.projectKey=${env.APP_NAME} \
+                              -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
+                              -Dsonar.projectVersion=${env.APP_VERSION} \
+                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                              -Dsonar.host.url=http://localhost:9000 \
+                              -Dsonar.token=\$SONAR_TOKEN \
+                              -B
+                        """
+                    }
                 }
             }
         }
