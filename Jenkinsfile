@@ -32,8 +32,8 @@ pipeline {
                 sh 'mvn clean compile -B -Dmaven.test.skip=true'
             }
             post {
-                success { echo 'Compile successful — moving to Test stage.' }
-                failure { echo 'Compile FAILED — check pom.xml and source errors.' }
+                success { echo 'Compile successful - moving to Test stage.' }
+                failure { echo 'Compile FAILED - check pom.xml and source errors.' }
             }
         }
         stage('Test') {
@@ -46,7 +46,7 @@ pipeline {
                           allowEmptyResults: false)
                 }
                 unstable {
-                    echo 'WARNING: Tests failed — build marked UNSTABLE.'
+                    echo 'WARNING: Tests failed - build marked UNSTABLE.'
                     script {
                         def results = currentBuild.rawBuild.getAction(
                             hudson.tasks.test.AbstractTestResultAction.class)
@@ -80,3 +80,18 @@ pipeline {
             }
         }
         stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        stage('Package & Archive') {
+            steps {
+                sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
+                archiveArtifacts(artifacts: 'target/*.war', fingerprint: true)
+                echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.war"
+            }
+        }
+    }
+}
