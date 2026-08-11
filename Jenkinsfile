@@ -80,18 +80,3 @@ pipeline {
             }
         }
         stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-        stage('Package & Archive') {
-            steps {
-                sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
-                archiveArtifacts(artifacts: 'target/*.jar', fingerprint: true)
-                echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.jar"
-            }
-        }
-    }
-}
