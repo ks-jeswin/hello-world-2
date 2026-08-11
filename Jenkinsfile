@@ -70,6 +70,7 @@ pipeline {
                           -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
                           -Dsonar.projectVersion=${env.APP_VERSION} \
                           -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                          -Dsonar.token=\$SONAR_AUTH_TOKEN \
                           -B
                     """
                 }
