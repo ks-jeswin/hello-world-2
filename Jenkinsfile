@@ -61,5 +61,19 @@ pipeline {
                 }
             }
         }
+        stage('Quality Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube-Local') {
+                    sh """
+                        mvn sonar:sonar \
+                          -Dsonar.projectKey=${env.APP_NAME} \
+                          -Dsonar.projectName="TechBuild ${env.APP_NAME}" \
+                          -Dsonar.projectVersion=${env.APP_VERSION} \
+                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                          -B
+                    """
+                }
+            }
+        }
     }
 }
