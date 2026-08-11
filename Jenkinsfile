@@ -10,6 +10,7 @@ pipeline {
     environment {
         APP_NAME     = 'hello-world-2'
         APP_VERSION  = "1.0.${env.BUILD_NUMBER}"
+        MAVEN_OPTS   = '-Xmx1024m -XX:+TieredCompilation'
     }
 
     options {
