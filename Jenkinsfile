@@ -94,9 +94,7 @@ pipeline {
             }
         }
         stage('Publish Artifact') {
-            when {
-                expression { env.GIT_BRANCH == 'origin/master' || env.GIT_BRANCH == 'master' }
-            }
+            when { branch 'master' }
             steps {
                 nexusArtifactUploader(
                     nexusVersion:  'nexus3',
