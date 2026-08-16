@@ -125,6 +125,11 @@ pipeline {
                     \$SLACK_WEBHOOK
                 """
             }
+            emailext(
+                subject: "SUCCESS: ${env.APP_NAME} - Build #${env.BUILD_NUMBER}",
+                body: "Build succeeded.\n\nJob: ${env.APP_NAME}\nBuild: #${env.BUILD_NUMBER}\nConsole: ${env.BUILD_URL}",
+                to: 'jeswin.jyo@gmail.com'
+            )
         }
         failure {
             withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_WEBHOOK')]) {
@@ -134,6 +139,11 @@ pipeline {
                     \$SLACK_WEBHOOK
                 """
             }
+            emailext(
+                subject: "FAILED: ${env.APP_NAME} - Build #${env.BUILD_NUMBER}",
+                body: "Build failed.\n\nJob: ${env.APP_NAME}\nBuild: #${env.BUILD_NUMBER}\nConsole: ${env.BUILD_URL}",
+                to: 'jeswin.jyo@gmail.com'
+            )
         }
         unstable {
             withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_WEBHOOK')]) {
@@ -143,6 +153,11 @@ pipeline {
                     \$SLACK_WEBHOOK
                 """
             }
+            emailext(
+                subject: "UNSTABLE: ${env.APP_NAME} - Build #${env.BUILD_NUMBER}",
+                body: "Build unstable (tests may have failed).\n\nJob: ${env.APP_NAME}\nBuild: #${env.BUILD_NUMBER}\nConsole: ${env.BUILD_URL}",
+                to: 'jeswin.jyo@gmail.com'
+            )
         }
     }
 }
