@@ -90,7 +90,7 @@ pipeline {
             steps {
                 sh "mvn package -DskipTests -B -Drevision=${env.APP_VERSION}"
                 archiveArtifacts(artifacts: 'target/*.war', fingerprint: true)
-                echo "Artifact archived: ${env.APP_NAME}-${env.APP_VERSION}.war"
+                echo "Artifact archived: hello-world.war"
             }
         }
         stage('Publish Artifact') {
@@ -109,7 +109,7 @@ pipeline {
                     artifacts: [[
                         artifactId: env.APP_NAME,
                         classifier: '',
-                        file:       "target/${env.APP_NAME}-${env.APP_VERSION}.war",
+                        file:       "target/hello-world.war",
                         type:       'war'
                     ]]
                 )
