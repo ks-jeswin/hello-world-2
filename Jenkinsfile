@@ -94,9 +94,7 @@ pipeline {
             }
         }
         stage('Publish Artifact') {
-            when {
-                expression { env.GIT_BRANCH == 'origin/master' || env.GIT_BRANCH == 'master' }
-            }
+            when { branch 'master' }
             steps {
                 nexusArtifactUploader(
                     nexusVersion:  'nexus3',
@@ -109,10 +107,39 @@ pipeline {
                     artifacts: [[
                         artifactId: env.APP_NAME,
                         classifier: '',
-                        file:       'target/hello-world.war',
+                        file:       "target/${env.APP_NAME}-${env.APP_VERSION}.war",
                         type:       'war'
                     ]]
                 )
+            }
+        }
+    }
+    post {
+        success {
+            withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_WEBHOOK')]) {
+                sh """
+                    curl -X POST -H 'Content-type: application/json' \
+                    --data '{"text":"SUCCESS: ${env.APP_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}"}' \
+                    \$SLACK_WEBHOOK
+                """
+            }
+        }
+        failure {
+            withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_WEBHOOK')]) {
+                sh """
+                    curl -X POST -H 'Content-type: application/json' \
+                    --data '{"text":"FAILED: ${env.APP_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}"}' \
+                    \$SLACK_WEBHOOK
+                """
+            }
+        }
+        unstable {
+            withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_WEBHOOK')]) {
+                sh """
+                    curl -X POST -H 'Content-type: application/json' \
+                    --data '{"text":"UNSTABLE: ${env.APP_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}"}' \
+                    \$SLACK_WEBHOOK
+                """
             }
         }
     }
